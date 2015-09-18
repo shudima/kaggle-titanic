@@ -4,11 +4,14 @@ import pandas
 import re
 import operator
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn import cross_validation
 from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.cross_validation import KFold
 
 family_id_mapping = {}
 
@@ -90,6 +93,32 @@ def predict_with_random_forest(data, predictors, target, test_data):
 
     return alg.predict(test_data[predictors])
 
+def predict_with_gradient_boost(data, predictors, target, test_data):
+    algorithms = [
+        [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Title", "FamilyId"]],
+        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "Embarked"]]
+    ]
+
+    full_predictions = []
+    alg_scores = []
+    for alg, predictors in algorithms:
+        alg.fit(data[predictors], data[target])
+        predictions = alg.predict_proba(test_data[predictors].astype(float))[:,1]
+        full_predictions.append(predictions)
+
+        scores = cross_validation.cross_val_score(alg, data[predictors], data[target], cv=3)
+
+        alg_scores.append(scores.mean())
+
+    print("Gradient score: " + str(np.mean(alg_scores)))
+
+    predictions = (full_predictions[0] * 3 + full_predictions[1]) / 4
+    predictions[predictions <= .5] = 0
+    predictions[predictions > .5] = 1
+    predictions = predictions.astype(int)
+
+    return predictions
+
 def feature_selection(data, predictors, target):
 
     selector = SelectKBest(f_classif, k=5)
@@ -121,14 +150,14 @@ def main():
     #predictors = ["Pclass", "Sex", "Fare", "Title", "Fare"]
 
     #logistic_predictions = predict_with_logistic_regression(train_data, predictors, "Survived", test_data)
-    random_forest_predictions = predict_with_random_forest(train_data, predictors, "Survived", test_data)
-
+    #random_forest_predictions = predict_with_random_forest(train_data, predictors, "Survived", test_data)
+    gradient_predictions = predict_with_gradient_boost(train_data, predictors, "Survived", test_data)
     #feature_selection(train_data, predictors, "Survived")
 
 
     submission = pandas.DataFrame({
         "PassengerId": test_data["PassengerId"],
-        "Survived": random_forest_predictions
+        "Survived": gradient_predictions
     })
 
     submission.to_csv("kaggle.csv", index=False)
